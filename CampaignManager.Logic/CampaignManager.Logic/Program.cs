@@ -6,27 +6,51 @@ namespace CampaignManager.Logic
     {
         private const string DELIMITER = ",";
         private const string CUSTOMER_CSV_NAME = @"..\\..\\..\\Resources\\Customers\\customers.csv";
+        private const string SENDS_FILE_PATH = "sends.txt";
 
+        static CancellationTokenSource cts = new CancellationTokenSource();
+        static CampaignManager CampaignManager = new CampaignManager();
         static List<Customer> Customers = new List<Customer>();
 
-        static List<Campaign> campaigns = new List<Campaign>
-        {
-        new Campaign { Template = "A", Condition = c => c.Gender == "male", Time = "10:15", Priority = 1 },
-        new Campaign { Template = "B", Condition = c => c.Age > 45, Time = "10:05", Priority = 2 },
-        new Campaign { Template = "C", Condition = c => c.City == "New York", Time = "10:10", Priority = 5 },
-        new Campaign { Template = "A", Condition = c => c.Deposit > 100, Time = "10:15", Priority = 3 },
-        new Campaign { Template = "C", Condition = c => c.IsNew, Time = "10:05", Priority = 4 },
-        };
-
-        static void Main(string[] args)
+        static async void Main(string[] args)
         {
             ReadCustomersCSV();
-            var scheduledCampaigns = ScheduleCampaigns(Customers, campaigns);
-            var date = DateTime.Now.ToString("yyyy-MM-dd");
-            WriteToFile(scheduledCampaigns, date);
 
-            // Імітація очікування 30 хвилин
-            Task.Delay(TimeSpan.FromMinutes(30)).Wait();
+            await MonitorCampaignsAsync(cts.Token);
+
+        }
+
+        static async Task MonitorCampaignsAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var now = DateTime.Now;
+                var sortedCampaigns = CampaignManager.GetCampaigns();
+
+                foreach (var campaign in sortedCampaigns)
+                {
+                    if (campaign.Time <= now)
+                    {
+                        SendCampaign(campaign);
+                        CampaignManager.GetCampaigns().Remove(campaign);
+                        break;
+                    }
+                }
+
+                await Task.Delay(60000);
+            }
+        }
+
+        static void SendCampaign(Campaign campaign)
+        {
+            ReadCustomersCSV();
+
+            List<Customer> filteredCustomers = Customers.Where(campaign.Condition).ToList();
+
+            foreach (Customer customer in filteredCustomers) 
+            {
+                WriteToFile(($"Sending campaign: {campaign.Template}, Priority: {campaign.Priority}, Customer: {customer.Id} Time: {campaign.Time}"));
+            }
         }
 
         static void ReadCustomersCSV()
@@ -47,34 +71,11 @@ namespace CampaignManager.Logic
             .ToList();
         }
 
-        static List<(int CustomerId, string Template, string Time, int Priority)> ScheduleCampaigns(List<Customer> customers, List<Campaign> campaigns)
+        static void WriteToFile(string message)
         {
-            var scheduled = new List<(int CustomerId, string Template, string Time, int Priority)>();
-
-            foreach (var campaign in campaigns)
+            using (var writer = new StreamWriter(SENDS_FILE_PATH))
             {
-                var filteredCustomers = customers.Where(campaign.Condition).ToList();
-                foreach (var customer in filteredCustomers)
-                {
-                    if (!scheduled.Any(s => s.CustomerId == customer.Id))
-                    {
-                        scheduled.Add((customer.Id, campaign.Template, campaign.Time, campaign.Priority));
-                    }
-                }
-            }
-
-            return scheduled.OrderBy(s => s.Priority).ToList();
-        }
-
-        static void WriteToFile(List<(int CustomerId, string Template, string Time, int Priority)> scheduled, string date)
-        {
-            var filename = $"sends_{date}.txt";
-            using (var writer = new StreamWriter(filename))
-            {
-                foreach (var entry in scheduled)
-                {
-                    writer.WriteLine($"{entry.CustomerId}, {entry.Template}, {entry.Time}, {entry.Priority}");
-                }
+                writer.WriteLine(message);
             }
         }
     }

@@ -8,9 +8,10 @@ namespace CampaignManager.Logic
         private const string CUSTOMER_CSV_NAME = @"..\\..\\..\\Resources\\Customers\\customers.csv";
         private const string SENDS_FILE_PATH = "sends.txt";
 
-        static CancellationTokenSource cts = new CancellationTokenSource();
-        static CampaignManager CampaignManager = new CampaignManager();
-        static List<Customer> Customers = new List<Customer>();
+        private CancellationTokenSource cts = new CancellationTokenSource();
+        private CampaignManager CampaignManager = new CampaignManager();
+        private List<Customer> Customers = new List<Customer>();
+        private Dictionary<int, DateTime> customersSentToday = new Dictionary<int, DateTime>();
 
         static async void Main(string[] args)
         {
@@ -20,7 +21,7 @@ namespace CampaignManager.Logic
 
         }
 
-        static async Task MonitorCampaignsAsync(CancellationToken cancellationToken)
+        private async Task MonitorCampaignsAsync(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -41,7 +42,7 @@ namespace CampaignManager.Logic
             }
         }
 
-        static void SendCampaign(Campaign campaign)
+        private void SendCampaign(Campaign campaign)
         {
             ReadCustomersCSV();
 
@@ -49,11 +50,33 @@ namespace CampaignManager.Logic
 
             foreach (Customer customer in filteredCustomers) 
             {
-                WriteToFile(($"Sending campaign: {campaign.Template}, Priority: {campaign.Priority}, Customer: {customer.Id} Time: {campaign.Time}"));
+                if (HasReceivedCampaignToday(customer.Id) == false)
+                {
+                    WriteToFile(($"Sending campaign: {campaign.Template}, Priority: {campaign.Priority}, Customer: {customer.Id} Time: {campaign.Time}"));
+                    MarkCampaignAsSent(customer.Id);
+                }
+                
             }
         }
 
-        static void ReadCustomersCSV()
+        private bool HasReceivedCampaignToday(int customerId)
+        {
+            return customersSentToday.ContainsKey(customerId) && customersSentToday[customerId].Date == DateTime.Now.Date;
+        }
+
+        private void MarkCampaignAsSent(int customerId)
+        {
+            if (customersSentToday.ContainsKey(customerId))
+            {
+                customersSentToday[customerId] = DateTime.Now;
+            }
+            else
+            {
+                customersSentToday.Add(customerId, DateTime.Now);
+            }
+        }
+
+        private void ReadCustomersCSV()
         {
             List<string> Lines = File.ReadLines(CUSTOMER_CSV_NAME).ToList();
             Customers = Lines
@@ -71,7 +94,7 @@ namespace CampaignManager.Logic
             .ToList();
         }
 
-        static void WriteToFile(string message)
+        private void WriteToFile(string message)
         {
             using (var writer = new StreamWriter(SENDS_FILE_PATH))
             {
